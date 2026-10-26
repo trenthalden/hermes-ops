@@ -30,6 +30,7 @@ pane (`desktop/account-usage/plugin.js`) is plain ESM on the app's React, no bui
 | `install.py` | copies the plugin into every home (or `--profile`/`--global`), enables it in `config.yaml`, copies the Desktop pane, optional watchdog cron + settings |
 | `plugin/account-usage/quota_watch.py` | optional cron `--no-agent` watchdog (two scopes, top-N, per-provider floors) |
 | `desktop/account-usage/plugin.js` | Hermes Desktop runtime plugin: the `quota` pane |
+| `skills/lean-executor-orchestration/SKILL.md` | reusable low-overhead delegation procedure for Cursor/Claude work |
 | `docs/` | DEV Framework documents (this project owns them) |
 
 Consumers of shared code: the plugin is consumed by the Hermes loader; nothing else imports it.

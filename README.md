@@ -8,6 +8,7 @@ solved a real problem here, with the measurement that motivated it.
 |---|---|
 | [`plugin/account-usage`](plugin/account-usage) — account limits, balances and spend across profiles for the agent, the chat (`/quota`) and the shell | v0.4, tested on Hermes v0.20.0 |
 | [`desktop/account-usage`](desktop/account-usage) — Hermes Desktop pane for the same data (progress bars, alerts, per-model activity) | v0.4, pane accepted 2026-09-20 |
+| [`skills/lean-executor-orchestration`](skills/lean-executor-orchestration) — one bounded executor task, compact receipt and one correction maximum | v1.0 |
 
 ---
 
