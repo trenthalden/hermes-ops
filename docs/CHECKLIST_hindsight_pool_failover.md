@@ -1,7 +1,7 @@
 # Hindsight Codex pool failover — portable Git artifact
 
 **Started:** 2026-11-11
-**Status:** in progress
+**Status:** awaiting operator review
 
 ## Scope agreed with the operator
 
@@ -28,13 +28,13 @@
 - [x] Add stable requirement/use-case/setup IDs; update project map, architecture, invariants, known errors, backlog, and regression index.
 - [x] Replace the `dict(tuple(...))` workaround with a narrow exception for the known public XAI marker; preserve the literal runtime header and cover both the exact exception and nearby non-matches.
 - [x] Re-run the configured finish gate after review-driven corrections; verify both version-scoped patches apply and compile, including the final Hermes v0.23.0 artifact.
-- [ ] After review, stage only task-owned paths, inspect the staged diff, and pass `commit-check`.
+- [x] After review, stage only task-owned paths, inspect the staged diff, and pass `commit-check`.
 
 **Acceptance:** docs match the artifact and scope; all configured checks and counted evidence are recorded; staged paths are task-owned only.
 
 ### 3. Publish the task branch
-- [ ] Commit only reviewed task-owned files on `feat/hindsight-hermes-pool-failover`.
-- [ ] Push the branch and verify the remote ref resolves to the committed SHA; do not open or merge a PR.
+- [x] Commit only reviewed task-owned files on `feat/hindsight-hermes-pool-failover`.
+- [x] Push the branch and verify the remote ref resolves to the committed SHA; do not open or merge a PR.
 
 **Acceptance:** remote branch and SHA are read back; existing dirty `main` work and its three local-only commits remain untouched.
 
@@ -47,14 +47,14 @@
 
 ## Handoff
 
-- Owner pause: lifted by the user's direct instruction to continue. The independent review and final worktree checks are complete; stage/commit/push remain gated on the staged-diff review, `commit-check`, and local devlog.
+- Owner pause: lifted by the user's direct instruction to continue. Independent review and final checks are complete; the branch is pushed. Checklist remains active pending operator review/acceptance.
 - Branch/base: isolated clean worktree, branch `feat/hindsight-hermes-pool-failover`, based on `origin/main` at `d9d8fd146e859bbf076e94624342a31555640e1e`.
 - The separate original `main` checkout was left untouched; unrelated working-tree changes and local-only commits are not included in this branch. The installed Hermes checkout was briefly targeted by a failed patch invocation; only the two previously clean target files were restored, its generated `.orig`/`.rej` files removed, and status returned to the pre-existing unrelated dirty-file set.
-- Current portion: the Hindsight helper buffers its response until pool-order checks complete, and each manager serializes token-bearing reclaim/refresh calls; isolated regressions prevent duplicate JSON output and duplicate forced refreshes. The Hermes v0.23.0 patch re-reads the exact authoritative profile/root row under its cross-process lock; the stale-manual-row regression simulates an outdated root cache. Its RED case failed before the patch for both store modes and the patched case passed. The final artifact applied to a pristine v0.23.0 archive; 100 focused pool tests passed and `py_compile` succeeded. Independent review found no blockers; its non-blocking findings were addressed by using a narrow secret-scanner exception, redacting the selected account ID from logs, and documenting that Linux/Windows remain unverified. The original dirty `main` checkout and Hermes source checkout's pre-existing dirty files remain untouched. No files are staged and no commit/push occurred.
+- Current portion: the Hindsight helper buffers its response until pool-order checks complete, and each manager serializes token-bearing reclaim/refresh calls; isolated regressions prevent duplicate JSON output and duplicate forced refreshes. The Hermes v0.23.0 patch re-reads the exact authoritative profile/root row under its cross-process lock; its stale-manual-row test reproduced the old behavior for both stores and passed after the patch. The final artifact applied to a pristine v0.23.0 archive; 100 focused pool tests passed and `py_compile` succeeded. Independent review found no blockers; all three non-blocking findings were addressed. Commit `f887a7e269cd0bf810fda65365cf945c9550e519` is on the remote branch. No PR was opened; original dirty `main` and pre-existing Hermes checkout changes remain untouched.
 - Decisions: target repo `hermes-ops`; user approved a portable anonymized patch and project-scope updates. No PR/merge requested.
 - Verified before this checklist: repository itself has no Hindsight code; installed Hindsight distribution is `hindsight-api-slim` 1.0.0. A prior assistant report of live backup failover remains unverified and is not counted here.
-- Checks/limitations: final `finish` passed after review-driven corrections (31 total, 0 skipped, 0 failures/errors); worktree heuristic found 0 suspects in 66 text files / 360,154 bytes, with artifacts/history explicitly not checked. `git diff --check` passed. The Hindsight 1.0.0 patch applied and compiled after log redaction; the final Hermes v0.23.0 patch applied to a pristine tag archive and 100 focused tests plus `py_compile` passed, with one unrelated pytest/anyio deprecation warning. No live upstream 429, live multi-process refresh, or service update was performed. Linux/Windows runtime compatibility is unverified. Commit-check, staged-diff review, local-only public-repo devlog, commit, and push remain pending.
-- Commit/push authorization was explicit before the pause and is confirmed by the user's direct request to push if the work is ready; proceed only after the staged diff and commit-check are clean.
+- Checks/limitations: `commit-check` passed after staging (31 total tests, 0 skipped, 0 failures/errors); staged heuristic found 0 suspects in 66 text files / 358,015 bytes, with artifacts/history explicitly not checked. `git diff --cached --check` passed. Both patches applied and compiled; the final Hermes v0.23.0 patch passed 100 focused tests plus `py_compile` with one unrelated pytest/anyio deprecation warning. No live upstream 429, live multi-process refresh, or service update was performed. Linux/Windows runtime compatibility remains unverified. The local-only public-repo devlog is created and ignored by Git.
+- Commit/push authorization was explicit and the requested push is complete; remote ref was read back at the committed SHA. No PR/merge was requested or opened.
 
 ## Product decisions or external authorization still needed
 
