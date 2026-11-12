@@ -77,6 +77,7 @@ it.
 | SET-003 | Watchdog (optional): `python install.py --profile <name> --watchdog 60m --deliver telegram\|local [--watch-scope profile\|all] [--watch-top N\|all] [--balance-min PROVIDER=AMOUNT …] [--weekly N --session N --balance-usd X --budget-usd Y --days N]` — creates cron job `quota-watch` (`every 60m`; a bare `60m` is normalised, see KE-2026-09-20-CRON-BARE-INTERVAL-ONE-SHOT) and stores thresholds in `plugins.entries.account-usage.settings` (`watch_scope`, `watch_top`, `balance_min.<provider>`) | installer / `hermes config set` / `hermes cron` | optional | UC-006, UC-008 |
 | SET-004 | Desktop pane: `desktop/account-usage/plugin.js` copied to `<HERMES_HOME>/desktop-plugins/account-usage/` (installer does it; `--no-desktop` skips) | installer | optional | UC-007 |
 | SET-002 | Provider login of the profile (`hermes -p <name> auth login openai-codex` etc.) — the plugin reads the resulting token store, it never logs in itself | Hermes auth | required for limits; without it the report says `unavailable` | UC-001, UC-002, UC-003, UC-004 |
+| SET-006 | Both optional patches are applied to matching `hindsight-api-slim` 1.0.0 and Hermes v0.23.0 source trees; every Hermes process sharing the selected pool uses the patched refresh code; Hindsight members use distinct stable `hermes-pool://<label>` selectors and an explicit failover order | Hindsight / Hermes source and runtime configuration | optional | UC-012 |
 
 ---
 
@@ -163,6 +164,23 @@ account is in use and how much quota remains, in one step, without reading sourc
 - **Outcome (value / function achieved):** the same numbers as `/quota`, but readable: full-contrast UI instead of the dim 11px system line Desktop uses for slash output (KE-2026-09-20-DESKTOP-SLASH-OUTPUT-DIM).
 - **Test:** NFV (Electron UI) — manual regression R-11; data path covered by the CLI tests.
 
+### Module: Optional compatibility integrations
+
+**Value this module delivers:** a Hindsight API process can reuse existing Hermes Codex
+pool entries without making a second rotating-token store; Hindsight controls its own
+member failover order.
+**Architecture components involved:** `integrations/hindsight-codex-pool/`
+(`ARCHITECTURE.md` → Components).
+
+#### UC-012 — Hindsight Codex calls fail over through selected Hermes pool rows
+
+- **Trigger:** Automatic — Hindsight receives an LLM `call` or `call_with_tools` request.
+- **Actor:** Hindsight `MultiLLMProvider` and the optional Hermes pool Codex adapter.
+- **Preconditions:** SET-006; each configured selector resolves to exactly one persisted Hermes pool row.
+- **Flow:** Hindsight's ordered member chain calls a patched Codex provider whose `codex_home` is `hermes-pool://<label>` → adapter reads `openai-codex` rows with `read_credential_pool()` and binds the selected credential ID → patched Hermes refresh locks the authoritative profile or borrowed-root store and re-reads that exact row before a single-use refresh → refresh/reclaim/status use the bound ID; a recognized quota-window 429 records status on that ID → Hindsight tries the next configured member. The adapter constructs a pool from persisted rows rather than `load_pool()` and verifies IDs/priorities; it does not reorder Hermes entries. Ordinary `codex_home` values retain Hindsight's existing auth-file behavior.
+- **Outcome (value / function achieved):** Hindsight can fail over between chosen Hermes accounts without a duplicate token store; concurrent patched callers adopt the peer's current refresh pair, while Hermes pool order stays unchanged.
+- **Test:** NFV (matched runtime and live provider quota state) — manual regression R-15; isolated adapter tests cover URI, exact-ID delegation, subprocess boundary and cooldown; the versioned Hermes patch includes stale-manual-row regressions for profile and borrowed-root stores.
+
 ---
 
 ## Not functionally verifiable — keep in mind during development
@@ -176,6 +194,7 @@ account is in use and how much quota remains, in one step, without reading sourc
 | UC-006 | cron scheduling and delivery are host behaviour | manual R-10 | silent when nothing breached; one message per breach-set per day |
 | UC-007 | Electron UI rendering | manual R-11 | pane must never block the app: every fetch error renders inline |
 | UC-008 | needs two real profiles on one account | `test_dedupe_*` + manual R-12 | different numbers = different account: never merge on provider name alone |
+| UC-012 | needs a version-matched Hindsight process, patched Hermes source in every sharing process, live pool and provider quota state | isolated adapter/Hermes patch tests + manual R-15 | exact pool ID only; no duplicate auth file; current row re-read under its store lock; Hindsight member order controls failover, Hermes priorities remain unchanged |
 
 ## Traceability
 
@@ -189,3 +208,4 @@ account is in use and how much quota remains, in one step, without reading sourc
 | UC-006 | Automatic | FR-005 | `quota_watch.py`, `install.py` | NFV |
 | UC-007 | Interactive | FR-010 | `desktop/account-usage/plugin.js` | NFV |
 | UC-008 | Automatic | FR-012 | `usage_core.py` `dedupe()` | `test_dedupe_marks_identical_quota_and_mutes_its_alerts` |
+| UC-012 | Automatic | FR-017, NFR-006/007, INV-005 | `HermesPoolCodexAuthManager`, patched Hermes `CredentialPool`, Hindsight `CodexLLM` patch | NFV; adapter and Hermes patch tests support |

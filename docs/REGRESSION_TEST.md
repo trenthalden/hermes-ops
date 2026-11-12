@@ -30,7 +30,9 @@ not handed back to the product owner as debugging chores.
 
 | Risk / requirement | Test command or source | What is NOT covered |
 |---|---|---|
-| NFR-001 token leak, FR-004 identity, FR-009 kinds/thresholds/balance parsing, multi-profile rendering | `python .devframework/run_unittest.py --start tests` -> `tests/test_usage_core.py` (13 tests) | real provider HTTP, real token store, Hermes loader registration |
+| NFR-001 token leak, FR-004 identity, FR-009 kinds/thresholds/balance parsing, multi-profile rendering | `python .devframework/run_unittest.py --start tests` -> `tests/test_usage_core.py` (17 tests) | real provider HTTP, real token store, Hermes loader registration |
+| FR-017, NFR-006/007, INV-005 Hindsight/Hermes-pool adapter | same configured suite -> `tests/test_hindsight_codex_pool_adapter.py` (10 isolated tests); both versioned patches applied to clean Hindsight 1.0.0 / Hermes v0.23.0 sources; focused Hermes pool suite (100 tests) includes stale manual-row, cached borrowed-root fallback, and root-lock regressions | real Hindsight `MultiLLMProvider` path, live quota response, live multi-process refresh |
+| NFR-006 secret-scan false-positive handling | `tests/test_secrets_check.py` (4 tests) | heuristic, not a complete credential/artifact audit |
 
 ## Cases
 
@@ -50,6 +52,7 @@ not handed back to the product owner as debugging chores.
 | R-13 | FR-011 per-provider floor | `hermes -p mastermind config set plugins.entries.account-usage.settings.balance_min.nous 100 --force`; `config unset` afterwards | nested key lands in `config.yaml` (`balance_min: {nous: 100}`) and `breaches()` uses it (`test_per_provider_balance_floor_*`) | pass 2026-09-20 |
 | R-11 | UC-007 Desktop pane | Settings → Plugins → Rescan (or restart); open the `quota` tab in the right dock; toggle All/This profile; press ↻ | pane lists profiles with progress bars and alerts; numbers equal `/quota`; no chat session required | pass 2026-09-20 (owner screenshot): `QUOTA` tab in the right zone, All/This profile toggle, alert row for default/nous, cards per profile with Session/Weekly bars, OpenRouter quota bar + balance, per-model activity; note: the right zone was collapsed at first and had to be opened from the title bar |
 | R-05 | installer idempotence | run `python install.py --profile mastermind` twice | second run prints `already enabled`; exactly one `- account-usage` line in config | pass 2026-09-19 (second run: `already enabled`, 1 line) |
+| R-15 | UC-012 Hindsight pool failover | In disposable, version-matched Hindsight 1.0.0 / Hermes v0.23.0 source trees, apply both patches; configure two distinct pool labels and an explicit Hindsight failover chain; exercise a recognized quota cooldown and parallel stale-manual-row refresh against a fake single-use endpoint; inspect profile/root pool state before and after | Hindsight returns the backup member's response; one latest refresh token is spent; only the bound row is refreshed/marked; Hermes IDs/priorities are unchanged; no token appears in logs/argv/output | not run against a live Hindsight service/provider quota; source patch regressions and application were verified in isolated copies |
 
 ## Findings
 

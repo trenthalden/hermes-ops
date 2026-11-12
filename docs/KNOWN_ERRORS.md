@@ -33,6 +33,26 @@ Rules:
 
 ## Open
 
+### KE-2026-11-11-HINDSIGHT-CODEX-POOL-ADAPTER — Hindsight Codex provider does not natively use Hermes' rotating credential pool
+
+**Where:** Hindsight `hindsight-api-slim` 1.0.0 Codex provider; optional artifact in `integrations/hindsight-codex-pool/`
+**Introduced / detected:** detected 2026-11-11 by source inspection; the provider reads one Codex auth file while Hermes exposes a multi-row pool
+**Impact:** without an adapter, Hindsight cannot bind each failover member to a distinct Hermes pool row without duplicating rotating tokens into separate auth files
+**Cause:** Hindsight's provider expects one auth file; Hermes pool selection, refresh, and status methods are version-specific. Calling Hermes `load_pool()` may normalize and persist priorities, so the adapter must use a non-normalizing construction path and verify the stored order.
+**Status:** version-scoped workaround documented for Hindsight 1.0.0 / Hermes v0.23.0; upstream-native support remains open
+**Workaround:** apply both optional version-scoped patches after checking exact versions, ensure every Hermes process sharing the selected pool uses the refresh patch, and configure stable pool labels; do not copy OAuth values into another auth store
+**Verification:** ten isolated adapter tests; Hindsight patch application/compile against a clean 1.0.0 provider; paired Hermes v0.23.0 patch application and focused 100-test pool suite. A prior session reported a local backup-member smoke but it was not independently rechecked against this bundle; no new upstream 429 was induced
+
+### KE-2026-11-12-HERMES-CODEX-STALE-POOL-REFRESH — a waiting process can refresh a stale manual Codex row
+
+**Where:** Hermes v0.23.0 `agent/credential_pool.py` (`CredentialPool._refresh_entry`, `_sync_entry_from_auth_store`)
+**Introduced / detected:** detected during read-only source review on 2026-11-12; the refresh selects an in-memory row before acquiring the cross-process lock, while the locked sync only follows matching singleton-backed sources
+**Impact:** after another process rotates a manual row's single-use refresh token, a waiter may submit the consumed token and fail or misclassify the credential
+**Cause:** the auth-store lock serializes refresh POSTs and writes, but manual pool rows are not re-read from their authoritative pool store after the lock is acquired; a borrowed global-root row may also require a root-target lock
+**Status:** mitigated by the optional version-scoped Hermes v0.23.0 patch in this branch; unpatched Hermes processes sharing the same pool remain affected
+**Workaround:** apply the patch to every Hermes process sharing the pool; until then, avoid overlapping refreshes of the same manual Codex row across processes
+**Verification:** synthetic RED before the patch showed duplicate refresh-token submissions for both profile-owned and borrowed-root stores, including a stale simulated global-root fallback; the patched direct-store-read regression passed for both. Patch applied to clean v0.23.0 sources; focused Hermes pool suite passed 100 tests. No live multi-process refresh or service update was performed
+
 ### KE-YYYY-MM-DD-... — ...
 
 **Where:**
@@ -48,6 +68,26 @@ Rules:
 ### KE-YYYY-MM-DD-... — ...
 
 **Status:** fixed in ...
+
+### KE-2026-11-12-HINDSIGHT-BRIDGE-RESPONSE — bridge could emit success before an order-check error
+
+**Where:** `integrations/hindsight-codex-pool/hermes_pool_codex_auth.py` (`_BRIDGE_CODE`)
+**Introduced / detected:** detected during review on 2026-11-12; a synthetic mutation made the priority guard fail after the success response had already been printed
+**Impact:** the Hindsight parent could not parse the helper's two JSON lines and could report an ambiguous result after a pool operation
+**Cause:** reclaim/refresh/quota branches printed before the final in-memory and persisted pool-order checks
+**Status:** fixed in the version-scoped adapter artifact; branch publication is tracked in `docs/CHECKLIST_hindsight_pool_failover.md`
+**Workaround:** none
+**Verification:** `test_bridge_emits_one_error_when_order_guard_rejects_mutation` failed on the old helper with two lines and passes after response buffering (one JSON error only); project `finish` passed with 29 tests, 0 skipped, 0 failures/errors
+
+### KE-2026-11-12-HINDSIGHT-REFRESH-SINGLE-FLIGHT — adapter could force multiple sequential refreshes for one manager
+
+**Where:** `integrations/hindsight-codex-pool/hermes_pool_codex_auth.py` (`HermesPoolCodexAuthManager.refresh_tokens`)
+**Introduced / detected:** detected during review on 2026-11-12; a synthetic concurrent forced-refresh test observed two bridge refreshes before the guard
+**Impact:** overlapping Hindsight calls could cause an unnecessary second rotation of a single-use OAuth token and race updates to the manager's in-memory token
+**Cause:** the adapter override bypassed `CodexAuthManager`'s single-flight behavior while delegating to the pool directly
+**Status:** fixed in the version-scoped adapter artifact; branch publication is tracked in `docs/CHECKLIST_hindsight_pool_failover.md`
+**Workaround:** none
+**Verification:** `test_concurrent_forced_refreshes_are_single_flight_per_manager` fails with two bridge refreshes before the guard and passes with one refresh afterward; project `finish` passed with 29 tests, 0 skipped, 0 failures/errors
 
 ### KE-2026-09-19-AGENT-QUOTA-ARCHAEOLOGY — agent needs 20 tool calls to answer a quota question without this plugin
 **Where:** Hermes core v0.20.0 — `/usage` is a user slash command; no agent tool, no `hermes usage` CLI (also absent on upstream main, checked 2026-09-19)

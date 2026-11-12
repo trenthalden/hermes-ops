@@ -19,6 +19,13 @@ MAX_TOTAL = 100 * 1024 * 1024
 def benign(name: str, value: str, quoted: bool) -> bool:
     if not value or PLACEHOLDER.fullmatch(value):
         return True
+    # A bare identifier assigned back to its own credential-named parameter is
+    # code, not an embedded secret (notably in removed lines of public patches).
+    if not quoted and value == name:
+        return True
+    # This exact documented Grok CLI client marker is public metadata, not a token.
+    if quoted and name.lower() == "x-xai-token-auth" and value == "xai-grok-cli":
+        return True
     key = re.sub(r"[^a-z0-9]", "", name.lower())
     # Exact metadata names + constrained values; not a blanket token_* exemption.
     if key == "tokentype" and value in ("Bearer", "bearer", "MAC", "mac"):

@@ -32,6 +32,7 @@ Numbers are permanent and unique; superseded ones are struck through, never reus
 | FR-013 | `xai-oauth` limits are fetched from the Grok CLI billing proxy with the stored OAuth bearer (weekly window, reset time, product usage, prepaid balance) until core has a fetcher (upstream PR #114949). | done (v0.4) |
 | FR-012 | In the multi-profile report an account whose remote numbers are identical to one already shown (same provider, identity and limits) is not repeated: the block says `same account as profile X` and keeps only its own activity; alerts fire once per account. | done (v0.4) |
 | FR-009 | Each provider block carries a kind — windows / balance / spend — with matching numbers and thresholds; no invented percentages for pay-as-you-go providers. | done (v0.2) |
+| FR-017 | The paired optional Hindsight/Hermes compatibility patches let each configured Codex member read and refresh one explicitly selected Hermes `openai-codex` pool row, and let Hindsight's configured failover chain try its next member after a recognized quota reset. Normal `codex_home` auth-file behavior remains unchanged. | done as version-scoped source artifacts for `hindsight-api-slim` 1.0.0 / Hermes v0.23.0; not installed by this project |
 | FR-006 | History of snapshots for trend view. | idea — not agreed |
 
 ## Non-functional requirements
@@ -42,6 +43,8 @@ Numbers are permanent and unique; superseded ones are struck through, never reus
 | NFR-002 | Single-profile report ≤ 5 s; all-profiles ≤ 40 s per profile (subprocess timeout). | done (3 profiles: 4.8 s on 2026-09-19) |
 | NFR-003 | Standard library only inside the plugin; host modules imported lazily so unit tests run without Hermes. | done |
 | NFR-004 | Installer never launches, restarts, commits or deletes user data; config edits are backed up. | done |
+| NFR-006 | The optional integration uses no duplicate auth file; refresh and quota status target the exact bound credential ID; persisted Hermes ID/priority order remains unchanged; no credentials appear in argv or logs. | covered by isolated adapter tests and source guards; live update path remains environment-dependent |
+| NFR-007 | For single-use Codex OAuth refreshes, patched Hermes v0.23.0 re-reads the exact row under the authoritative profile or borrowed-root auth-store lock; it adopts a fresh peer rotation rather than submitting the consumed refresh token again, and fails closed if the row cannot be read. | covered by the versioned Hermes regression on temporary stores; live multi-process refresh remains untested |
 
 ## Superseded
 

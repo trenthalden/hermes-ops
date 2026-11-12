@@ -13,11 +13,12 @@ weekly limit" cost the agent 17 model cycles, 20 tool calls and 449 s
 (`D:\DEV\Hermes\docs\research\gpt-account-limit-answer-audit.md`). With this plugin the
 same question took 2 tool calls and one model turn (56 s, session `20260919_212926_ad1a57`).
 
-Runtime: Python 3.11 (the Hermes venv), Hermes Agent v0.20.0 (2026.8.3). Standard library
-only; the plugin imports the host's `agent.account_usage` and `hermes_cli.auth` at call
-time. No third-party packages. Network I/O of its own: exactly one HTTPS GET, the Grok CLI
-billing proxy for `xai-oauth` (core has no fetcher; see ARCHITECTURE decisions). The Desktop
-pane (`desktop/account-usage/plugin.js`) is plain ESM on the app's React, no build step.
+Account-usage runtime: Python 3.11 (the Hermes venv), Hermes Agent v0.20.0 (2026.8.3).
+Standard library only; the plugin imports the host's `agent.account_usage` and
+`hermes_cli.auth` at call time. No third-party packages. Network I/O of its own: exactly
+one HTTPS GET, the Grok CLI billing proxy for `xai-oauth` (core has no fetcher; see
+ARCHITECTURE decisions). The Desktop pane (`desktop/account-usage/plugin.js`) is plain ESM
+on the app's React, no build step.
 
 ## File map and boundaries
 
@@ -31,9 +32,12 @@ pane (`desktop/account-usage/plugin.js`) is plain ESM on the app's React, no bui
 | `plugin/account-usage/quota_watch.py` | optional cron `--no-agent` watchdog (two scopes, top-N, per-provider floors) |
 | `desktop/account-usage/plugin.js` | Hermes Desktop runtime plugin: the `quota` pane |
 | `skills/lean-executor-orchestration/SKILL.md` | reusable low-overhead delegation procedure for Cursor/Claude work |
+| `integrations/hindsight-codex-pool/` | paired optional source patches for Hindsight 1.0.0 and Hermes v0.23.0; manually applied, version-scoped, and separate from account-usage |
 | `docs/` | DEV Framework documents (this project owns them) |
 
-Consumers of shared code: the plugin is consumed by the Hermes loader; nothing else imports it.
+Consumers of shared code: the account-usage plugin is consumed by the Hermes loader; the optional adapter and refresh-safety patch are applied manually to matching Hindsight and Hermes source trees. The project installer does not apply or manage them.
+
+Scope boundary: the optional Hindsight/Hermes patches are an explicitly approved compatibility artifact. They do not change the account-usage data path or Hermes pool order, and this repository does not install them or change local service state.
 
 ## Workflow profile
 

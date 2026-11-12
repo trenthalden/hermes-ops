@@ -1,0 +1,62 @@
+--- a/hindsight_api/engine/providers/codex_llm.py
++++ b/hindsight_api/engine/providers/codex_llm.py
+@@ -59,0 +60 @@
++from .hermes_pool_codex_auth import HermesPoolCodexAuthManager, parse_hermes_pool_uri
+@@ -254 +255,3 @@
+-        # Load Codex OAuth credentials (keep these methods for test patching).
++        # Explicit Hermes-pool URIs share the profile's rotating credentials;
++        # normal codex_home values retain the existing auth.json behavior.
++        pool_auth_manager = None
+@@ -256,3 +259,9 @@
+-            access_token, account_id = self._load_codex_auth()
+-            refresh_token = self._load_codex_refresh_token()
+-            logger.info(f"Loaded Codex OAuth credentials for account: {account_id}")
++            pool_selector = parse_hermes_pool_uri(self._codex_home)
++            if pool_selector:
++                pool_auth_manager = HermesPoolCodexAuthManager(pool_selector, model=self.model)
++                access_token, account_id = pool_auth_manager.access_token, pool_auth_manager.account_id
++                refresh_token = None
++            else:
++                access_token, account_id = self._load_codex_auth()
++                refresh_token = self._load_codex_refresh_token()
++            logger.info("Loaded Codex OAuth credentials")
+@@ -271,6 +280,8 @@
+-        self._auth_manager = CodexAuthManager(
+-            access_token=access_token,
+-            account_id=account_id,
+-            refresh_token=refresh_token,
+-            auth_file=default_codex_auth_file(self._codex_home),
+-        )
++        if pool_auth_manager is not None:
++            self._auth_manager = pool_auth_manager
++        else:
++            auth_kwargs = dict(zip(
++                ("access_token", "account_id", "refresh_token", "auth_file"),
++                (access_token, account_id, refresh_token, default_codex_auth_file(self._codex_home)),
++            ))
++            self._auth_manager = CodexAuthManager(**auth_kwargs)
+@@ -450,0 +462,2 @@
++        if isinstance(self._auth_manager, HermesPoolCodexAuthManager):
++            await self._auth_manager.ensure_pool_credential()
+@@ -455,0 +469,12 @@
++
++    async def _record_pool_quota_exhaustion(self, error: UpstreamHTTPError, model: str) -> None:
++        """Record recognized Codex account quota windows against the bound pool row."""
++        if not isinstance(self._auth_manager, HermesPoolCodexAuthManager):
++            return
++        retry_at = _codex_quota_retry_at(error)
++        if retry_at is None:
++            return
++        try:
++            await self._auth_manager.mark_quota_exhausted(retry_at.timestamp(), model)
++        except Exception as exc:  # bookkeeping must not suppress LLM failover
++            logger.warning("Could not update Hermes Codex quota status (%s)", type(exc).__name__)
+@@ -548,0 +574 @@
++        pool_quota_marked = False
+@@ -755,0 +782,3 @@
++                if status_code == 429 and not pool_quota_marked:
++                    await self._record_pool_quota_exhaustion(e, self.model)
++                    pool_quota_marked = True
+@@ -1091,0 +1121,2 @@
++                    if e.status_code == 429:
++                        await self._record_pool_quota_exhaustion(e, self.model)

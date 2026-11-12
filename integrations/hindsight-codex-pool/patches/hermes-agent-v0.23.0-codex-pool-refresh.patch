@@ -1,0 +1,213 @@
+--- a/agent/credential_pool.py
++++ b/agent/credential_pool.py
+@@ -15,0 +16 @@
++from contextlib import ExitStack
+@@ -1304,0 +1306,44 @@
++
++    def _sync_codex_entry_from_pool_store(
++        self, entry: PooledCredential, auth_store_path: Path,
++    ) -> Optional[PooledCredential]:
++        """Re-read the exact Codex pool row under its owning auth-store lock.
++
++        Unlike a singleton-backed device_code alias, an independent manual row
++        has no provider.tokens shadow to resync from. Its persisted pool row is
++        the token authority after another process rotates the single-use pair.
++        """
++        try:
++            store = auth_mod._load_auth_store(auth_store_path)
++            pool = store.get("credential_pool")
++            rows = pool.get("openai-codex") if isinstance(pool, dict) else None
++            if not isinstance(rows, list):
++                rows = []
++            persisted = next(
++                (row for row in rows if isinstance(row, dict) and row.get("id") == entry.id),
++                None,
++            )
++            if not isinstance(persisted, dict):
++                logger.warning(
++                    "Codex pool entry %s is no longer readable; refusing stale refresh",
++                    entry.id[:8],
++                )
++                return None
++            self._persisted_token_pairs[entry.id] = auth_mod._credential_token_pair(persisted)
++            stored = PooledCredential.from_dict("openai-codex", persisted)
++            if not (stored.access_token or "").strip() and not (stored.refresh_token or "").strip():
++                logger.warning(
++                    "Codex pool entry %s has no persisted token pair; refusing stale refresh",
++                    entry.id[:8],
++                )
++                return None
++            if stored.access_token != entry.access_token or stored.refresh_token != entry.refresh_token:
++                self._replace_entry(entry, stored)
++                return stored
++            return entry
++        except Exception as exc:
++            logger.warning(
++                "Could not read the current Codex pool entry; refusing stale refresh (%s)",
++                type(exc).__name__,
++            )
++            return None
+@@ -1508,4 +1553,30 @@
+-        with _auth_store_lock(timeout_seconds=self._single_use_refresh_lock_timeout()):
+-            if self.provider == "openai-codex":
+-                synced = self._sync_entry_from_auth_store(entry)
+-                if synced is not entry and not force and not self._entry_needs_refresh(synced):
++        if self.provider == "openai-codex":
++            timeout_seconds = self._single_use_refresh_lock_timeout()
++            with ExitStack() as locks:
++                # Keep the profile lock first so pool ownership cannot change
++                # while we choose the profile or borrowed-root authoritative store.
++                locks.enter_context(_auth_store_lock(timeout_seconds=timeout_seconds))
++                global_path = _global_auth_file_path()
++                if global_path is not None and not _profile_owns_pool_provider(self.provider):
++                    root_path = _borrowed_single_use_pool_root()
++                    if root_path is None:
++                        logger.warning(
++                            "Codex pool refresh refused: borrowed root lock target is unavailable"
++                        )
++                        return None
++                    # Lock ordering matches profile-to-root write-through. This
++                    # is required for borrowed rows (KE-2026-11-12-HERMES-CODEX-STALE-POOL-REFRESH).
++                    locks.enter_context(
++                        _auth_store_lock(timeout_seconds=timeout_seconds, target_path=root_path)
++                    )
++                    auth_store_path = root_path
++                else:
++                    auth_store_path = auth_mod._auth_file_path()
++                synced = self._sync_codex_entry_from_pool_store(entry, auth_store_path)
++                if synced is None:
++                    return None
++                synced = self._sync_entry_from_auth_store(synced)
++                # A peer may have rotated the bearer after the failed request.
++                # Adopt its fresh pair even when this call requested force=True;
++                # do not spend the just-rotated refresh token a second time.
++                if synced is not entry and not self._entry_needs_refresh(synced):
+@@ -1513,0 +1585,2 @@
++
++        with _auth_store_lock(timeout_seconds=self._single_use_refresh_lock_timeout()):
+--- a/tests/agent/test_credential_pool_codex_singleton_isolation.py
++++ b/tests/agent/test_credential_pool_codex_singleton_isolation.py
+@@ -106,0 +107,109 @@
++
++
++@pytest.mark.parametrize(
++    "borrowed_root", [False, True], ids=["profile-store", "borrowed-root-store"]
++)
++def test_independent_manual_account_forced_refresh_adopts_peer_rotation(
++    home, monkeypatch, borrowed_root
++):
++    """A second pool snapshot must use the exact manual row under its owner lock."""
++    from contextlib import contextmanager
++
++    import agent.credential_pool as CP
++    import hermes_cli.auth as auth_mod
++
++    now = time.time()
++    a_at = _jwt("acct-A", "user-A", now + 8 * 3600)
++    b_at = _jwt("acct-B", "user-B", now + 60)
++    _write_store(
++        home,
++        {"access_token": a_at, "refresh_token": "YOUR_TEST_REFRESH_TOKEN_A"},
++        _iso(now - 3600),
++        {
++            "access_token": b_at,
++            "refresh_token": "YOUR_TEST_REFRESH_TOKEN_B",
++            "last_refresh": _iso(now - 7200),
++        },
++    )
++    authoritative_path = home / "auth.json"
++    active_path = authoritative_path
++    if borrowed_root:
++        profile = home / "profiles" / "borrower"
++        profile.mkdir(parents=True)
++        active_path = profile / "auth.json"
++        active_path.write_text(json.dumps({"version": 1, "providers": {}}), encoding="utf-8")
++        monkeypatch.setenv("HERMES_HOME", str(profile))
++        monkeypatch.setattr(auth_mod, "_auth_file_path", lambda: active_path)
++        monkeypatch.setattr(auth_mod, "_global_auth_file_path", lambda: authoritative_path)
++        monkeypatch.setattr(CP, "_global_auth_file_path", lambda: authoritative_path)
++        monkeypatch.setattr(CP, "_borrowed_single_use_pool_root", lambda: authoritative_path)
++    else:
++        monkeypatch.setattr(auth_mod, "_global_auth_file_path", lambda: None)
++        monkeypatch.setattr(CP, "_global_auth_file_path", lambda: None)
++        monkeypatch.setattr(CP, "_borrowed_single_use_pool_root", lambda: None)
++    auth_mod._global_auth_store_cache = None
++
++    real_lock = auth_mod._auth_store_lock
++    held: dict[str, int] = {}
++
++    @contextmanager
++    def tracking_lock(timeout_seconds=15.0, *, target_path=None):
++        path = target_path if target_path is not None else auth_mod._auth_file_path()
++        key = str(path.resolve())
++        with real_lock(timeout_seconds=timeout_seconds, target_path=target_path):
++            held[key] = held.get(key, 0) + 1
++            try:
++                yield
++            finally:
++                held[key] -= 1
++                if held[key] == 0:
++                    held.pop(key)
++
++    monkeypatch.setattr(auth_mod, "_auth_store_lock", tracking_lock)
++    monkeypatch.setattr(CP, "_auth_store_lock", tracking_lock)
++    real_load_store = auth_mod._load_auth_store
++    reads = []
++
++    def tracking_load_store(auth_file=None):
++        path = auth_file if auth_file is not None else auth_mod._auth_file_path()
++        key = str(path.resolve())
++        reads.append((key, key in held))
++        return real_load_store(auth_file)
++
++    monkeypatch.setattr(auth_mod, "_load_auth_store", tracking_load_store)
++    monkeypatch.setattr(CP, "_load_auth_store", tracking_load_store)
++    posts = []
++
++    b_new = _jwt("acct-B", "user-B", now + 8 * 3600)
++
++    def fake_refresh(_access_token, refresh_token):
++        posts.append((refresh_token, str(authoritative_path.resolve()) in held))
++        return {
++            "access_token": b_new,
++            "refresh_token": "YOUR_TEST_REFRESH_TOKEN_B2",
++            "last_refresh": _iso(time.time()),
++        }
++
++    monkeypatch.setattr(auth_mod, "refresh_codex_oauth_pure", fake_refresh)
++
++    first_pool = load_pool("openai-codex")
++    waiting_pool = load_pool("openai-codex")
++    first_entry = next(e for e in first_pool.entries() if e.id == "manual")
++    stale_entry = next(e for e in waiting_pool.entries() if e.id == "manual")
++    stale_root_snapshot = json.loads(authoritative_path.read_text(encoding="utf-8"))
++
++    first = first_pool._refresh_entry(first_entry, force=True)
++    if borrowed_root:
++        # Simulate a peer's stale global-root fallback cache. Refresh must read
++        # the authoritative file directly under its root lock.
++        monkeypatch.setattr(
++            auth_mod, "_load_global_auth_store", lambda: stale_root_snapshot
++        )
++    second = waiting_pool._refresh_entry(stale_entry, force=True)
++
++    assert first is not None and first.refresh_token == "YOUR_TEST_REFRESH_TOKEN_B2"
++    assert second is not None and second.refresh_token == "YOUR_TEST_REFRESH_TOKEN_B2"
++    assert posts == [("YOUR_TEST_REFRESH_TOKEN_B", True)]
++    assert (str(authoritative_path.resolve()), True) in reads
++    on_disk = json.loads(authoritative_path.read_text(encoding="utf-8"))
++    assert on_disk["providers"]["openai-codex"]["tokens"]["refresh_token"] == "YOUR_TEST_REFRESH_TOKEN_A"
+--- a/tests/agent/test_credential_pool_oauth_writethrough.py
++++ b/tests/agent/test_credential_pool_oauth_writethrough.py
+@@ -190,0 +191,11 @@
++    def fixture_token(kind):
++        return {"access": "stale-access", "refresh": "stale-refresh"}[kind]
++
++    profile_path.write_text(json.dumps({
++        "version": 1,
++        "credential_pool": {"openai-codex": [{
++            "id": "codex-1", "label": "cred", "auth_type": "oauth", "priority": 0,
++            "source": "device_code", "access_token": fixture_token("access"),
++            "refresh_token": fixture_token("refresh"),
++        }]},
++    }), encoding="utf-8")

@@ -9,6 +9,7 @@ solved a real problem here, with the measurement that motivated it.
 | [`plugin/account-usage`](plugin/account-usage) — account limits, balances and spend across profiles for the agent, the chat (`/quota`) and the shell | v0.4, tested on Hermes v0.20.0 |
 | [`desktop/account-usage`](desktop/account-usage) — Hermes Desktop pane for the same data (progress bars, alerts, per-model activity) | v0.4, pane accepted 2026-09-20 |
 | [`skills/lean-executor-orchestration`](skills/lean-executor-orchestration) — one bounded executor task, compact receipt and one correction maximum | v1.0 |
+| [`integrations/hindsight-codex-pool`](integrations/hindsight-codex-pool) — paired optional Hindsight 1.0.0 / Hermes v0.23.0 source patches for exact-ID Codex pool access, safe refresh and configured failover | compatibility artifacts; not installed by `install.py` |
 
 ---
 
@@ -124,7 +125,7 @@ DEV Framework project: `PROJECT.md`, `docs/` (requirements, architecture, use ca
 known errors, backlog + active checklist), `.devframework/check.py doctor|finish`.
 
 ```bash
-python -m unittest discover -s tests -v       # 13 tests, no Hermes, no network
+python .devframework/run_unittest.py --start tests  # includes isolated optional-integration tests; no live credentials/network
 python .devframework/check.py finish          # counted evidence + source digest
 node --check desktop/account-usage/plugin.js  # (copy to .mjs first) Desktop pane syntax
 ```

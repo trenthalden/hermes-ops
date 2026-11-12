@@ -7,9 +7,11 @@ components appear, or data flows change. See `AGENTS.md` section 3.
 **Sibling of `USE_CASES.md`.** This file says how the system is built; `USE_CASES.md` says
 what value it delivers and how each path is exercised.
 
-**Schema authority:** N/A — the plugin has no database and no migrations. The only
-versioned contract is the report JSON produced by `usage_core.report()` (below) and the
-plugin version in `plugin/account-usage/plugin.yaml`.
+**Schema authority:** the account-usage plugin has no database or migrations; its versioned
+contract is the report JSON produced by `usage_core.report()` (below) and the plugin
+version in `plugin/account-usage/plugin.yaml`. The separate optional Hindsight add-on
+documents its `hermes-pool://<label>` selector and exact Hindsight source version in its
+integration README.
 
 ## Components
 
@@ -27,6 +29,9 @@ plugin version in `plugin/account-usage/plugin.yaml`.
 | `usage_core.collectors` (`active_provider`, `codex_identity`, `usage_for`, `report`) | read host config + token store, call host fetchers; fail soft | `hermes_cli.config.load_config`, `hermes_cli.auth._read_codex_tokens` / `resolve_codex_runtime_credentials`, `agent.account_usage.fetch_account_usage` / `render_account_usage_lines` / `nous_credits_lines` |
 | `usage_core.all_profiles_reports` | one subprocess per profile with its own `HERMES_HOME` | `sys.executable`, `PYTHONPATH` = host package dir |
 | `install.py` | plug-and-play copy + `plugins.enabled` text patch with backup | filesystem only |
+| `integrations/hindsight-codex-pool/hermes_pool_codex_auth.py` | optional Hindsight 1.0.0 adapter; reads by configured pool label, binds the request to a credential ID, delegates refresh/status to Hermes | Hermes pool API in the configured Hermes runtime; standard library |
+| `integrations/hindsight-codex-pool/patches/hindsight-api-slim-1.0.0-codex_llm.patch` | opt-in source integration of the adapter into Hindsight's Codex provider and recognized-429 path | exact Hindsight 1.0.0 source layout |
+| `integrations/hindsight-codex-pool/patches/hermes-agent-v0.23.0-codex-pool-refresh.patch` | opt-in Codex refresh fix: re-read the exact row under the authoritative profile/root auth-store lock before spending a single-use token | exact Hermes Agent v0.23.0 source layout |
 
 ## Data schema
 
@@ -67,6 +72,8 @@ N/A. A change to the report shape bumps `plugin.yaml` version and is noted in do
 4. **Watchdog:** cron (`every N`, `--no-agent`) → `quota_watch.py` → (1) or (3) by `watch_scope` → top-N providers by calls → `breaches()` → non-empty stdout only on a new breach-set → cron delivery target.
 5. **Desktop pane:** `cli.exec` in the *active* profile → `hermes usage --json` → JSON parsed from the first bare `[` line → focus strip (5h / weekly % left per deduped source, balance for prepaid) → alerts → cards. The `usage` command must exist in every profile the Desktop may activate — hence `install.py` with no target installs into every home.
 6. **xai-oauth:** `usage_for_xai()` resolves the bearer through the host, one HTTPS GET to `cli-chat-proxy.grok.com/v1/billing?format=credits` with `X-XAI-Token-Auth: xai-grok-cli`, maps `creditUsagePercent`/`currentPeriod` to a `Weekly` window. The token is used in the request header only and never rendered.
+7. **Optional Hindsight Codex pool path:** Hindsight's ordered member chain → patched `CodexLLM` → `hermes_pool_codex_auth` → Hermes `read_credential_pool("openai-codex")` by a unique configured label → exact credential ID for refresh or recognized quota status. The paired Hermes v0.23.0 patch re-reads that row under its owning profile or borrowed-root lock; a peer-rotated fresh pair is adopted instead of refreshed again. The bridge uses a private child-process pipe, not a duplicate token file. It constructs a `CredentialPool` from persisted rows instead of calling `load_pool()` (which can normalize and persist priorities), then verifies stored ID/priority order. Hindsight's member order—not Hermes pool priority—controls failover.
+   **cost:** one local Python subprocess per bridge operation; one `reclaim` per Codex call, plus provider-init `read` and conditional `refresh`/quota-status operations; 45 s timeout, no polling/retry loop, peak subprocess concurrency no greater than Hindsight calls in flight. Hermes adds one persisted-row read per refresh, no extra process or token-endpoint request (see integration README).
 
 ## Decisions
 
@@ -79,4 +86,5 @@ N/A. A change to the report shape bumps `plugin.yaml` version and is noted in do
 | Pane data via `cli.exec` subprocess | the only SDK door without a backend REST route; ~6 s per refresh at 5-min cadence | `ctx.rest` route in the backend plugin | refresh < 30 s or > 10 profiles |
 | Identity from JWT claims, decoded without verification | the only place email/plan exist locally; verification is pointless for display | `hermes auth status` (does not show identity) | host starts exposing identity in `auth status` |
 | Subprocess per profile | `HERMES_HOME` is resolved process-wide by the host; isolation without touching host internals | context-local override `set_hermes_home_override` | >10 profiles or latency complaints |
+| Version-scoped Hindsight patch | upstream Hindsight 1.0.0 Codex provider reads one auth file and has no Hermes-pool adapter; Hermes pool internals can change across versions | duplicate `auth.json` credentials (rejected: creates a second rotating-token authority) | Hindsight/Hermes expose a stable public adapter API |
 | Text patch of `config.yaml` in installer | preserves comments; PyYAML round-trip would rewrite the file | `hermes config set` (no list support verified) | host offers `hermes plugins enable <name>` for user plugins |
